@@ -332,16 +332,16 @@ class TestTrain(unittest.TestCase, CustomAssertions):
         self.assertArrayClose(hmm.B, blurred_hmm.B)
 
 
-class TestGetStationaries(unittest.TestCase, CustomAssertions):
+class TestGetStationaryDistributions(unittest.TestCase, CustomAssertions):
 
     def test01(self):
         """
         A 1-state 1-symbol HMM has a single stationary distribution [1]
         """
         hmm = make_uniform_hmm(1, 1)
-        true_stationaries = np.ones((1, 1))
-        test_stationaries = hmm.get_stationaries()
-        self.assertArrayClose(test_stationaries, true_stationaries)
+        true_stationary_dists = np.ones((1, 1))
+        test_stationary_dists = hmm.get_stationary_distributions()
+        self.assertArrayClose(true_stationary_dists, test_stationary_dists)
 
     def test02(self, n_states=5):
         """
@@ -354,9 +354,9 @@ class TestGetStationaries(unittest.TestCase, CustomAssertions):
         A = np.identity(n_states)
         B = np.identity(n_states)
         hmm = HMM(pi, A, B)
-        true_stationaries = np.identity(n_states)
-        test_stationaries = hmm.get_stationaries()
-        self.assertArrayClose(test_stationaries, true_stationaries)
+        true_stationary_dists = np.identity(n_states)
+        test_stationary_dists = hmm.get_stationary_distributions()
+        self.assertArrayClose(true_stationary_dists, test_stationary_dists)
 
     def test03(self, n_states=5):
         """
@@ -369,12 +369,12 @@ class TestGetStationaries(unittest.TestCase, CustomAssertions):
         A = np.identity(n_states)[::-1]
         B = np.identity(n_states)
         hmm = HMM(pi, A, B)
-        true_stationaries = np.zeros((n_states // 2 + 1, n_states))
+        true_stationary_dists = np.zeros((n_states // 2 + 1, n_states))
         for i in range(n_states // 2 + 1):
-            true_stationaries[i, i] += 0.5
-            true_stationaries[i, -(i + 1)] += 0.5
-        test_stationaries = hmm.get_stationaries()
-        self.assertArrayClose(test_stationaries, true_stationaries)
+            true_stationary_dists[i, i] += 0.5
+            true_stationary_dists[i, -(i + 1)] += 0.5
+        test_stationary_dists = hmm.get_stationary_distributions()
+        self.assertArrayClose(true_stationary_dists, test_stationary_dists)
 
     def test04(self, n_states=5):
         """
@@ -383,9 +383,9 @@ class TestGetStationaries(unittest.TestCase, CustomAssertions):
         :param n_states: the number of states in the HMM
         """
         hmm = make_uniform_hmm(n_states, n_states)
-        true_stationaries = np.full((1, n_states), 1 / n_states)
-        test_stationaries = hmm.get_stationaries()
-        self.assertArrayClose(test_stationaries, true_stationaries)
+        true_stationary_dists = np.full((1, n_states), 1 / n_states)
+        test_stationary_dists = hmm.get_stationary_distributions()
+        self.assertArrayClose(true_stationary_dists, test_stationary_dists)
 
     def test05(self, n_states=5):
         """
@@ -394,9 +394,9 @@ class TestGetStationaries(unittest.TestCase, CustomAssertions):
         :param n_states: the number of states in the HMM
         """
         hmm = make_cyclic_hmm(n_states)
-        true_stationaries = np.full((1, n_states), 1 / n_states)
-        test_stationaries = hmm.get_stationaries()
-        self.assertArrayClose(test_stationaries, true_stationaries)
+        true_stationary_dists = np.full((1, n_states), 1 / n_states)
+        test_stationary_dists = hmm.get_stationary_distributions()
+        self.assertArrayClose(true_stationary_dists, test_stationary_dists)
 
     def test06(self):
         """
@@ -408,9 +408,9 @@ class TestGetStationaries(unittest.TestCase, CustomAssertions):
                       [0., 0.5, 0.5]])
         B = np.identity(3)
         hmm = HMM(pi, A, B)
-        true_stationaries = np.array([[0.25, 0.5, 0.25]])
-        test_stationaries = hmm.get_stationaries()
-        self.assertArrayClose(test_stationaries, true_stationaries)
+        true_stationary_dists = np.array([[0.25, 0.5, 0.25]])
+        test_stationary_dists = hmm.get_stationary_distributions()
+        self.assertArrayClose(true_stationary_dists, test_stationary_dists)
 
 
 if __name__ == '__main__':

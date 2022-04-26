@@ -230,7 +230,7 @@ class HMM:
             for sym in range(self.B.shape[1]):
                 self.B[:, sym] = np.sum(gamma[np.where(observations == sym)], axis=0) / gamma_sum
 
-    def get_stationaries(self):
+    def get_stationary_distributions(self):
         """
         Computes and returns the stationary distributions of the hmm.
         Note that there may be more than one stationary distribution.
@@ -239,5 +239,5 @@ class HMM:
         """
         eig_vals, eig_vecs = np.linalg.eig(self.A.T)
         eig_vals, eig_vecs = eig_vals.real, eig_vecs.real.T
-        stationaries = eig_vecs[np.isclose(eig_vals, 1.0)]  # since (A x p)=(1 * p) for a stationary distribution
-        return stationaries / np.sum(stationaries, axis=1).reshape((-1, 1))
+        stationary_distributions = eig_vecs[np.isclose(eig_vals, 1.0)]  # since (A x p)=(1 * p) for a stationary
+        return stationary_distributions / np.sum(stationary_distributions, axis=1).reshape((-1, 1))
