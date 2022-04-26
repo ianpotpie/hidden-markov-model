@@ -1,5 +1,7 @@
 import numpy as np
 
+eps = 1e-8
+
 
 class HMM:
     def __init__(self, pi, A, B):
@@ -131,7 +133,7 @@ class HMM:
         and prior at each step and summing over the conditional. For all these probabilities, there is an implied
         conditional on lambda.
 
-        p(O_[t+1],...,O_T|S_t=k) = sum_i[p(S_t=k|S_[t+1]=j) * p(O_[t+1]|j) * p(O_[t+1],...,O_T|S_t=i) ]
+        p(O_[t+1],...,O_T|S_t=k) = sum_i[p(S_t=k|S_[t+1]=j) * p(O_[t+1]|j) * p(O_[t+1],...,O_T|S_t=i)]
 
         beta is the conventional name for this probability. It is also referred to as the "backward pass variable"
         since it is used in the backward pass of other algorithms.
@@ -180,6 +182,7 @@ class HMM:
         """
         # n_examples = len(X)
         T = observations.shape[0]
+        n_states = len(self.pi)
 
         self.reset_state()
         if randomize:
@@ -189,23 +192,26 @@ class HMM:
             # expectation step
             alpha = self._get_alpha(observations)
             beta = self._get_beta(observations)
+
             gamma = alpha * beta
-            xi = alpha[:-1] * self.A * self.B[:, observations[1:]] * beta[1:]
-            norm_constant = np.sum(gamma, axis=1)
-            gamma /= norm_constant
-            xi /= norm_constant
+            norm_constants = np.sum(gamma, axis=1)
+            gamma /= norm_constants.reshape((-1, 1)) + eps
+
+            xi = np.zeros((T - 1, n_states, n_states))
+            for i in range(n_states):
+                for j in range(n_states):
+                    xi[:, i, j] = alpha[:-1, i] * self.A[i, j] * self.B[j, observations[1:]] * beta[1:, j]
+            xi /= norm_constants[1:].reshape((-1, 1, 1)) + eps
 
             # maximization step
             self.pi = gamma[0]
 
-            self.A = np.sum(xi, axis=0)
-            self.A /= np.sum(self.A, axis=1)
+            self.A = np.sum(xi, axis=0) / (np.sum(xi, axis=(0, 2)) + eps)
 
             for v in range(self.B.shape[1]):
-                self.B[:, v] = np.sum(np.where(observations == v, gamma), axis=0)
-            self.B /= np.sum(gamma, axis=0)
+                self.B[:, v] = np.sum(gamma[np.where(observations == v)], axis=0) / (np.sum(gamma, axis=0) + eps)
 
-    def get_stationary(self):
+    def get_stationaries(self):
         """
         Computes and returns the stationary distributions of the hmm.
         Note that there may be more than one stationary distribution.
@@ -213,7 +219,10 @@ class HMM:
         :return: a list of distributions over the states.
         """
         eig_vals, eig_vecs = np.linalg.eig(self.A.T)
-        stationaries = eig_vecs[:, np.isclose(eig_vals, 1)]  # since (A x p)=(1 * p) for a stationary distribution
-        for i, vec in enumerate(stationaries):
-            stationaries[i] /= np.sum(vec)  # this normalizes the eigenvectors to valid distributions
+        eig_vals, eig_vecs = eig_vals.real, eig_vecs.real.T
+        idx = np.argsort(eig_vals)[::-1]
+        eig_vals, eig_vecs = eig_vals[idx], eig_vecs[idx]
+        stationaries = eig_vecs[np.isclose(eig_vals, 1.0)]  # since (A x p)=(1 * p) for a stationary distribution
+        for i, stationary in enumerate(stationaries):
+            stationaries[i] /= np.sum(stationary)  # this normalizes the eigenvectors to valid distributions
         return stationaries
