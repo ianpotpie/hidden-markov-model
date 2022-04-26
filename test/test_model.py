@@ -263,6 +263,50 @@ class TestViterbi(unittest.TestCase, CustomAssertions):
     # TODO: IMPLEMENT
     pass
 
+    def test01(self, n_symbols=5, T=10):
+        """
+        A 1-state n-symbol HMM should always iterate over the same state.
+
+        :param n_symbols: the number of symbols emitted by the HMM
+        :param T: the number of observations (observation time)
+        """
+        hmm = make_uniform_hmm(1, n_symbols)
+        observations = hmm.get_observations(T)
+        true_states = np.zeros(T, dtype=int)
+        test_states = hmm.viterbi(observations)
+        self.assertArrayEqual(true_states, test_states)
+
+    def test02(self, n_states=5, T=10):
+        """
+        An n-state cyclic HMM should always iterate over the same state-cycle.
+
+        :param n_states: the number of states in the HMM
+        :param T: the number of observations (observation time)
+        """
+        hmm = make_cyclic_hmm(n_states)
+        observations = hmm.get_observations(T)
+        true_states = np.arange(T, dtype=int) % n_states
+        test_states = hmm.viterbi(observations)
+        self.assertArrayEqual(true_states, test_states)
+
+    def test03(self, n_states=5, T=10):
+        """
+        An n-state cyclic HMM with laplace smoothing should always iterate over the same state-cycle.
+
+        :param n_states: the number of states in the HMM
+        :param T: the number of observations (observation time)
+        """
+        hmm = make_cyclic_hmm(n_states)
+        delta = 0.1
+        hmm.pi = (hmm.pi + (delta / n_states)) / (1 + delta)
+        for i in range(n_states):
+            hmm.A[i] = (hmm.A[i] + (delta / n_states)) / (1 + delta)
+            hmm.B[i] = (hmm.B[i] + (delta / n_states)) / (1 + delta)
+        observations = np.arange(T, dtype=int) % n_states
+        true_states = np.arange(T, dtype=int) % n_states
+        test_states = hmm.viterbi(observations)
+        self.assertArrayEqual(true_states, test_states)
+
 
 class TestGetBeta(unittest.TestCase, CustomAssertions):
     # TODO: IMPLEMENT
