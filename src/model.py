@@ -52,7 +52,7 @@ class HMM:
         if self.state is None or reset_state:
             self.state = np.random.choice(n_states, p=self.pi)
 
-        observations = np.zeros(T)
+        observations = np.zeros(T, dtype=int)
         for t in range(T):
             observations[t] = np.random.choice(n_symbols, p=self.B[self.state])
             self.state = np.random.choice(n_states, p=self.A[self.state])
@@ -66,7 +66,7 @@ class HMM:
         probability into its conditional and prior at each step and summing over the conditional. For all these
         probabilities, there is an implied conditional on lambda.
 
-        p(O_1,...,O_t,S_t=k) = p(O_t|S_t=k) * sum_i[p(O_1,...,O_[t-1],S_[t-1]=i) * p(S_t=k|S_[t-1]=i)]
+        alpha = p(O_1,...,O_t,S_t=k) = p(O_t|S_t=k) * sum_i[p(O_1,...,O_[t-1],S_[t-1]=i) * p(S_t=k|S_[t-1]=i)]
 
         alpha is the conventional name for this probability. It is also referred to as the "forward pass variable"
         since it is used in the forward pass of other algorithms.
@@ -116,16 +116,15 @@ class HMM:
         v = np.zeros((T, n_states))
         v[0] = self.pi * self.B[:, observations[0]]
         for t in range(1, T):
-            v[t] = self.B[:, observations[t]] * np.max(v[t - 1] * self.A, axis=1)  # TODO: check this
+            v[t] = self.B[:, observations[t]] * np.max(v[t - 1].reshape((-1, 1)) * self.A, axis=0)
 
         # backtrace to get the optimal sequence of states
-        opt_states = np.zeros(T)  # the most-likely sequence of states
-        opt_states[T - 1] = np.argmax(v[T - 1])
-        for i in range(1, T):
-            t = T - (i + 1)  # iterates backward T-2, T-3, ..., 0
-            opt_states[t] = np.argmax(self.A[:, opt_states[t + 1]] * v[t])
+        backtrace = np.zeros(T, dtype=int)
+        backtrace[T - 1] = np.argmax(v[T - 1])
+        for t in range(T - 2, -1, -1):  # iterates backward T-2, T-3, ..., 0
+            backtrace[t] = np.argmax(self.A[:, backtrace[t + 1]] * v[t])
 
-        return opt_states
+        return backtrace
 
     def get_beta(self, observations):
         """
@@ -134,7 +133,7 @@ class HMM:
         and prior at each step and summing over the conditional. For all these probabilities, there is an implied
         conditional on lambda.
 
-        p(O_[t+1],...,O_T|S_t=k) = sum_i[p(S_t=k|S_[t+1]=j) * p(O_[t+1]|j) * p(O_[t+1],...,O_T|S_t=i)]
+        beta = p(O_[t+1],...,O_T|S_t=k) = sum_i[p(S_t=k|S_[t+1]=j) * p(O_[t+1]|j) * p(O_[t+1],...,O_T|S_t=i)]
 
         beta is the conventional name for this probability. It is also referred to as the "backward pass variable"
         since it is used in the backward pass of other algorithms.
@@ -146,10 +145,9 @@ class HMM:
         T = len(observations)
         n_states = len(self.pi)
 
-        beta = np.ones((T, n_states))  # beta = p(O_[t+1] ,... ,O_T | S_t=k)
-        for i in range(1, T):
-            t = T - (i + 1)  # iterate backwards from T-2, T-2, ..., 0
-            beta[t] = self.A @ (self.B[:, observations[t + 1]] * beta[t + 1])  # TODO: check this is correct
+        beta = np.ones((T, n_states))
+        for t in range(T - 2, -1, -1):  # iterate backwards from T-2, T-2, ..., 0
+            beta[t] = self.A @ (self.B[:, observations[t + 1]] * beta[t + 1])
 
         return beta
 
