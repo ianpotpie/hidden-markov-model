@@ -1,7 +1,5 @@
 import numpy as np
 
-eps = np.finfo(float).eps
-
 
 class HMM:
     def __init__(self, pi, A, B):
@@ -188,9 +186,7 @@ class HMM:
         observations = observations.astype(int)
         T = observations.shape[0]
         n_states = len(self.pi)
-        # This uniform distribution over the states is used in placed where we have missing information about certain
-        # states or and state transitions.
-        states_uniform = np.full(n_states, 1 / n_states)
+        uniform_over_states = np.full(n_states, 1 / n_states)
 
         self.reset_state()
         if randomize:
@@ -202,10 +198,7 @@ class HMM:
             beta = self.get_beta(observations)
 
             gamma = alpha * beta  # P(S_t|O_1,...,O_T)
-            # When A and B are not compatible with the observations, we can get a column of zeros in gamma.
-            # In that case, we assume a uniform distribution over the states in that column.
-            # (this usually happens with bad initializations)
-            gamma[np.where(np.sum(gamma, axis=1) == 0.0)] = states_uniform
+            gamma[np.all(gamma == 0.0, axis=1)] = uniform_over_states  # set zero-probability columns to be uniform
             norms = np.sum(gamma, axis=1)
             gamma /= norms.reshape((-1, 1))  # normalize the state distribution at each time step
 
@@ -219,16 +212,13 @@ class HMM:
             self.pi = gamma[0]
 
             xi_sum = np.sum(xi, axis=0)  # sum over all time steps
-            # if we observe no transitions out of a state, then assume a uniform transition probability to all states
-            xi_sum[np.argwhere(np.sum(xi_sum, axis=1) == 0.0)] = states_uniform
+            xi_sum[np.all(xi_sum == 0.0, axis=1)] = uniform_over_states  # set zero-probability columns to be uniform
             self.A = xi_sum / np.sum(xi_sum, axis=1).reshape(-1, 1)  # normalize each outgoing transition distribution
 
             gamma_sum = np.sum(gamma, axis=0)  # sum over all time steps
-            # In the case where we have a zero (we never encountered the state) we set it to some positive value.
-            # This avoids dividing by zero, and the positive value can be anything since the numerator will be zero.
-            gamma_sum[np.where(gamma_sum == 0.0)] = eps
             for sym in range(self.B.shape[1]):
-                self.B[:, sym] = np.sum(gamma[np.where(observations == sym)], axis=0) / gamma_sum
+                # to avoid division by zero, we check the value in gamma_sum using np where
+                self.B[:, sym] = np.where(gamma_sum, np.sum(gamma[observations == sym], axis=0) / gamma_sum, 0)
 
     def get_stationary_distributions(self):
         """
