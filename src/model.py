@@ -1,6 +1,6 @@
 import numpy as np
 
-eps = 1e-8
+eps = np.finfo(float).eps
 
 
 class HMM:
@@ -25,12 +25,12 @@ class HMM:
         """
         self.pi = np.random.random(self.pi.shape)
         self.pi /= np.sum(self.pi)
+
         self.A = np.random.random(self.A.shape)
-        for i, row in enumerate(self.A):
-            self.A[i] /= np.sum(row)
+        self.A /= np.sum(self.A, axis=1, keepdims=True)
+
         self.B = np.random.random(self.B.shape)
-        for i, row in enumerate(self.B):
-            self.B[i] /= np.sum(row)
+        self.B /= np.sum(self.B, axis=1, keepdims=True)
 
     def reset_state(self):
         """
@@ -40,30 +40,28 @@ class HMM:
         """
         self.state = None
 
-    def get_observations(self, n=1, reset_state=True):
+    def get_observations(self, T=1, reset_state=False):
         """
-        Give a random sequence of observations based on the HMM.
+        Produces a random sequence of observations based on the HMM.
 
-        :param n: the number of observations
+        :param T: the number of observations
         :param reset_state: a boolean indicating whether to reset the state
-        :return: a sequence of n observations
+        :return: a list of T observations
         """
-        assert isinstance(n, int), "the number of observations must be an integer"
-        assert n > 0, "the number of observations must be at least 1"
         n_states = len(self.pi)
         n_symbols = self.B.shape[1]
 
         if self.state is None or reset_state:
             self.state = np.random.choice(n_states, p=self.pi)
 
-        observation = np.zeros(n)
-        for i in range(n):
-            observation[i] = np.random.choice(n_symbols, p=self.B[self.state])
+        observations = np.zeros(T)
+        for t in range(T):
+            observations[t] = np.random.choice(n_symbols, p=self.B[self.state])
             self.state = np.random.choice(n_states, p=self.A[self.state])
 
-        return observation
+        return observations
 
-    def _get_alpha(self, observations):
+    def get_alpha(self, observations):
         """
         Finds the probability distribution of states for a time t given all observations leading up to (and including)
         time t. It creates an array with the distributions for all times. The distributions are found by splitting the
@@ -78,13 +76,14 @@ class HMM:
         :param observations: a sequence of observations
         :return: a 2D array representing a sequence of distributions
         """
+        observations = observations.astype(int)
         T = len(observations)
         n_states = len(self.pi)
 
         alpha = np.zeros((T, n_states))
         alpha[0] = self.pi * self.B[:, observations[0]]
         for t in range(1, T):
-            alpha[t] = (alpha[t - 1] @ self.A) * self.B[:, observations[t]]  # TODO: check this is correct
+            alpha[t] = (alpha[t - 1] @ self.A) * self.B[:, observations[t]]
 
         return alpha
 
@@ -94,12 +93,15 @@ class HMM:
         This can be accomplished by either summing the final probabilities of the forward variable, alpha, or taking the
         first probabilities of the backward variable, beta, with the priors of the HMM and the first observation.
 
+        P(O_1,...,O_T) = sum_k[p(O_1,...,O_T,S_t=k)] = sum_k[alpha_T[k]]
+
         :param observations: a sequence of symbols
         :return: the probability
         """
+        observations = observations.astype(int)
         T = len(observations)
-        alpha = self._get_alpha(observations)  # alpha = p(O_1,...,O_t,S_t)
-        return np.sum(alpha[T - 1])  # sum_k[p(O_1,...,O_t,S_t=k)] = p(O_1,...,O_t)
+        alpha = self.get_alpha(observations)
+        return np.sum(alpha[T - 1])
 
     def viterbi(self, observations):
         """
@@ -108,6 +110,7 @@ class HMM:
         :param observations: a sequence of observations symbols
         :return: a sequence of states
         """
+        observations = observations.astype(int)
         T = len(observations)
         n_states = len(self.pi)
 
@@ -126,7 +129,7 @@ class HMM:
 
         return opt_states
 
-    def _get_beta(self, observations):
+    def get_beta(self, observations):
         """
         Finds the conditional probability of the set of observations following a given state. This is done for all
         times t and results in an array. The probabilities are found by splitting the probability into its conditional
@@ -141,6 +144,7 @@ class HMM:
         :param observations: a sequence of observations
         :return: a 2D array representing a sequence of conditional probability sets
         """
+        observations = observations.astype(int)
         T = len(observations)
         n_states = len(self.pi)
 
@@ -151,7 +155,7 @@ class HMM:
 
         return beta
 
-    def get_state_probs(self, observations):
+    def get_state_distributions(self, observations):
         """
         Finds the probability distribution of states for a time t given all observations. It creates an array with the
         distributions for all times. The distributions are found by taking the product of the probabilities of the
@@ -166,8 +170,9 @@ class HMM:
         :param observations: a sequence of observations
         :return: a 2D array representing a sequence of distributions
         """
-        alpha = self._get_alpha(observations)
-        beta = self._get_beta(observations)
+        observations = observations.astype(int)
+        alpha = self.get_alpha(observations)
+        beta = self.get_beta(observations)
         gamma = alpha * beta
         return gamma / np.sum(gamma, axis=1)  # normalizes each distribution in gamma
 
@@ -177,52 +182,62 @@ class HMM:
 
         :param observations: a sequence of observations
         :param n_epochs: the number of epochs for which to train
-        :param randomize:
+        :param randomize: a boolean indicating if the model should be uniformly randomized before training
         :return: None
         """
-        # n_examples = len(X)
+        observations = observations.astype(int)
         T = observations.shape[0]
         n_states = len(self.pi)
+        # This uniform distribution over the states is used in placed where we have missing information about certain
+        # states or and state transitions.
+        states_uniform = np.full(n_states, 1 / n_states)
 
         self.reset_state()
         if randomize:
             self.randomize()
 
         for _ in range(n_epochs):
-            # expectation step
-            alpha = self._get_alpha(observations)
-            beta = self._get_beta(observations)
+            # EXPECTATION STEP
+            alpha = self.get_alpha(observations)
+            beta = self.get_beta(observations)
 
-            gamma = alpha * beta
-            norm_constants = np.sum(gamma, axis=1)
-            gamma /= norm_constants.reshape((-1, 1)) + eps
+            gamma = alpha * beta  # P(S_t|O_1,...,O_T)
+            # When A and B are not compatible with the observations, we can get a column of zeros in gamma.
+            # In that case, we assume a uniform distribution over the states in that column.
+            # (this usually happens with bad initializations)
+            gamma[np.where(np.sum(gamma, axis=1) == 0.0)] = states_uniform
+            norms = np.sum(gamma, axis=1)
+            gamma /= norms.reshape((-1, 1))  # normalize the state distribution at each time step
 
-            xi = np.zeros((T - 1, n_states, n_states))
+            xi = np.zeros((T - 1, n_states, n_states))  # P(S_t,S_[t+1]|O_1,...,O_T)
             for i in range(n_states):
                 for j in range(n_states):
                     xi[:, i, j] = alpha[:-1, i] * self.A[i, j] * self.B[j, observations[1:]] * beta[1:, j]
-            xi /= norm_constants[1:].reshape((-1, 1, 1)) + eps
+            xi /= norms[:-1].reshape((-1, 1, 1))  # normalize the transition distribution at each time step
 
-            # maximization step
+            # MAXIMIZATION STEP
             self.pi = gamma[0]
 
-            self.A = np.sum(xi, axis=0) / (np.sum(xi, axis=(0, 2)) + eps)
+            xi_sum = np.sum(xi, axis=0)  # sum over all time steps
+            # if we observe no transitions out of a state, then assume a uniform transition probability to all states
+            xi_sum[np.argwhere(np.sum(xi_sum, axis=1) == 0.0)] = states_uniform
+            self.A = xi_sum / np.sum(xi_sum, axis=1).reshape(-1, 1)  # normalize each outgoing transition distribution
 
-            for v in range(self.B.shape[1]):
-                self.B[:, v] = np.sum(gamma[np.where(observations == v)], axis=0) / (np.sum(gamma, axis=0) + eps)
+            gamma_sum = np.sum(gamma, axis=0)  # sum over all time steps
+            # In the case where we have a zero (we never encountered the state) we set it to some positive value.
+            # This avoids dividing by zero, and the positive value can be anything since the numerator will be zero.
+            gamma_sum[np.where(gamma_sum == 0.0)] = eps
+            for sym in range(self.B.shape[1]):
+                self.B[:, sym] = np.sum(gamma[np.where(observations == sym)], axis=0) / gamma_sum
 
     def get_stationaries(self):
         """
         Computes and returns the stationary distributions of the hmm.
         Note that there may be more than one stationary distribution.
 
-        :return: a list of distributions over the states.
+        :return: a 2D numpy array where each row is a stationary distribution
         """
         eig_vals, eig_vecs = np.linalg.eig(self.A.T)
         eig_vals, eig_vecs = eig_vals.real, eig_vecs.real.T
-        idx = np.argsort(eig_vals)[::-1]
-        eig_vals, eig_vecs = eig_vals[idx], eig_vecs[idx]
         stationaries = eig_vecs[np.isclose(eig_vals, 1.0)]  # since (A x p)=(1 * p) for a stationary distribution
-        for i, stationary in enumerate(stationaries):
-            stationaries[i] /= np.sum(stationary)  # this normalizes the eigenvectors to valid distributions
-        return stationaries
+        return stationaries / np.sum(stationaries, axis=1).reshape((-1, 1))
